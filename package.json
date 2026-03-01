@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "clear": "rimraf ./dist",
+    "build": "tsc --noEmit",
     "dev": "tsc && node ./dist/index.js",
     "test": "vitest --typecheck  run --coverage"
   },
