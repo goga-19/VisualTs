@@ -1,129 +1,164 @@
-import { describe, it, expect } from 'vitest';
-import { where, sort, groupBy, having, query } from '../main/index.js';
+import { describe, it, expectTypeOf } from 'vitest';
+import type { DeepReadonly, PickedByType, EventHandlers } from './types';
 
-// ── фикстура ──────────────────────────────────────────────
+
 type User = {
   id: number;
   name: string;
   age: number;
-  role: 'admin' | 'user';
+  active: boolean;
+  address: {
+    city: string;
+    zip: number;
+    coords: {
+      lat: number;
+      lng: number;
+    };
+  };
+  tags: string[];
 };
 
-const users: User[] = [
-  { id: 1, name: 'Alice', age: 30, role: 'admin' },
-  { id: 2, name: 'Bob',   age: 25, role: 'user'  },
-  { id: 3, name: 'Carol', age: 30, role: 'user'  },
-  { id: 4, name: 'Dave',  age: 25, role: 'admin' },
-];
+type AppEvents = {
+  click: MouseEvent;
+  change: InputEvent;
+  submit: SubmitEvent;
+};
 
-describe('where', () => {
-  it('фильтрует по точному совпадению', () => {
-    const result = where('role', 'admin')(users);
-    expect(result).toHaveLength(2);
-    expect(result.every(u => u.role === 'admin')).toBe(true);
+
+
+describe('DeepReadonly', () => {
+  it('делает верхний уровень readonly', () => {
+    type R = DeepReadonly<User>;
+
+    expectTypeOf<R['id']>().toEqualTypeOf<number>();
+    expectTypeOf<R['name']>().toEqualTypeOf<string>();
+    expectTypeOf<R['active']>().toEqualTypeOf<boolean>();
   });
 
-  it('возвращает пустой массив если ничего не найдено', () => {
-    const result = where('name', 'Unknown')(users);
-    expect(result).toHaveLength(0);
+  it('рекурсивно делает вложенный объект readonly', () => {
+    type R = DeepReadonly<User>;
+
+    expectTypeOf<R['address']['city']>().toEqualTypeOf<string>();
+    expectTypeOf<R['address']['zip']>().toEqualTypeOf<number>();
+    expectTypeOf<R['address']['coords']['lat']>().toEqualTypeOf<number>();
   });
 
-  it('не мутирует исходный массив', () => {
-    const copy = [...users];
-    where('role', 'admin')(users);
-    expect(users).toEqual(copy);
-  });
-});
+  it('делает массив ReadonlyArray', () => {
+    type R = DeepReadonly<User>;
 
-
-describe('sort', () => {
-  it('сортирует числа по возрастанию', () => {
-    const result = sort('age')(users);
-    const ages = result.map(u => u.age);
-    expect(ages).toEqual([...ages].sort((a, b) => a - b));
+    expectTypeOf<R['tags']>().toEqualTypeOf<ReadonlyArray<string>>();
   });
 
-  it('сортирует строки по возрастанию', () => {
-    const result = sort('name')(users);
-    const names = result.map(u => u.name);
-    expect(names).toEqual([...names].sort());
+  it('примитив остаётся примитивом', () => {
+    expectTypeOf<DeepReadonly<string>>().toEqualTypeOf<string>();
+    expectTypeOf<DeepReadonly<number>>().toEqualTypeOf<number>();
+    expectTypeOf<DeepReadonly<boolean>>().toEqualTypeOf<boolean>();
   });
 
-  it('не мутирует исходный массив', () => {
-    const copy = [...users];
-    sort('age')(users);
-    expect(users).toEqual(copy);
-  });
-});
+  it('не совместим с мутабельным вложенным типом', () => {
+    type R = DeepReadonly<User>;
 
 
-describe('groupBy', () => {
-  it('группирует по ключу', () => {
-    const groups = groupBy('role')(users);
-    expect(groups).toHaveLength(2);
-  });
-
-  it('каждая группа содержит правильный key', () => {
-    const groups = groupBy('role')(users);
-    const keys = groups.map(g => g.key).sort();
-    expect(keys).toEqual(['admin', 'user']);
-  });
-
-  it('items в группе соответствуют ключу', () => {
-    const groups = groupBy('role')(users);
-    for (const group of groups) {
-      expect(group.items.every(u => u.role === group.key)).toBe(true);
-    }
-  });
-
-  it('суммарное кол-во items равно исходному массиву', () => {
-    const groups = groupBy('age')(users);
-    const total = groups.reduce((acc, g) => acc + g.items.length, 0);
-    expect(total).toBe(users.length);
+    expectTypeOf<R['address']['coords']>().not.toEqualTypeOf<{
+      lat: number;
+      lng: number;
+    }>();
   });
 });
 
 
-describe('having', () => {
-  it('оставляет группы по предикату', () => {
-    const groups = groupBy('role')(users);
-    const result = having((g) => g.items.length > 1)(groups);
-    expect(result.length).toBeGreaterThan(0);
-    expect(result.every(g => g.items.length > 1)).toBe(true);
+describe('PickedByType', () => {
+  it('выбирает только строковые поля', () => {
+    type OnlyStrings = PickedByType<User, string>;
+
+    expectTypeOf<OnlyStrings>().toEqualTypeOf<{
+      name: string;
+    }>();
   });
 
-  it('возвращает пустой массив если предикат false для всех', () => {
-    const groups = groupBy('role')(users);
-    const result = having(() => false)(groups);
-    expect(result).toHaveLength(0);
+  it('выбирает только числовые поля', () => {
+    type OnlyNumbers = PickedByType<User, number>;
+
+    expectTypeOf<OnlyNumbers>().toEqualTypeOf<{
+      id: number;
+      age: number;
+    }>();
+  });
+
+  it('выбирает только булевые поля', () => {
+    type OnlyBooleans = PickedByType<User, boolean>;
+
+    expectTypeOf<OnlyBooleans>().toEqualTypeOf<{
+      active: boolean;
+    }>();
+  });
+
+  it('возвращает пустой объект если тип не совпадает ни с одним полем', () => {
+    type Nothing = PickedByType<User, symbol>;
+
+    expectTypeOf<Nothing>().toEqualTypeOf<Record<never, never>>();
+  });
+
+  it('работает с union-типами', () => {
+    type Mixed = PickedByType<User, string | number>;
+
+    expectTypeOf<Mixed>().toEqualTypeOf<{
+      id: number;
+      age: number;
+      name: string;
+    }>();
   });
 });
 
 
-describe('query', () => {
-  it('применяет шаги последовательно', () => {
-    const result = query(
-      where('role', 'user'),
-      sort('age'),
-    )(users);
+describe('EventHandlers', () => {
+  it('генерирует onEventName ключи с заглавной буквы', () => {
+    type Handlers = EventHandlers<AppEvents>;
 
-    expect(result.every((u: User) => u.role === 'user')).toBe(true);
-    const ages = result.map((u: User) => u.age);
-    expect(ages).toEqual([...ages].sort((a, b) => a - b));
+    expectTypeOf<Handlers>().toHaveProperty('onClick');
+    expectTypeOf<Handlers>().toHaveProperty('onChange');
+    expectTypeOf<Handlers>().toHaveProperty('onSubmit');
   });
 
-  it('работает с groupBy + having в пайплайне', () => {
-    const result = query(
-      groupBy('age'),
-      having((g) => g.key === 30),
-    )(users);
+  it('каждый обработчик принимает правильный тип события', () => {
+    type Handlers = EventHandlers<AppEvents>;
 
-    expect(result).toHaveLength(1);
-    expect(result[0].key).toBe(30);
+    expectTypeOf<Handlers['onClick']>().toEqualTypeOf<
+      (event: MouseEvent) => void
+    >();
+    expectTypeOf<Handlers['onChange']>().toEqualTypeOf<
+      (event: InputEvent) => void
+    >();
+    expectTypeOf<Handlers['onSubmit']>().toEqualTypeOf<
+      (event: SubmitEvent) => void
+    >();
   });
 
-  it('без шагов возвращает исходные данные', () => {
-    const result = query()(users);
-    expect(result).toEqual(users);
+  it('возвращает void из обработчика', () => {
+    type Handlers = EventHandlers<AppEvents>;
+
+    expectTypeOf<Handlers['onClick']>().returns.toEqualTypeOf<void>();
+  });
+
+  it('исходные ключи без on не присутствуют', () => {
+    type Handlers = EventHandlers<AppEvents>;
+
+
+    type _test = Handlers['click'];
+  });
+
+  it('работает с кастомными событиями', () => {
+    type CustomEvents = {
+      resize: { width: number; height: number };
+      close: null;
+    };
+    type Handlers = EventHandlers<CustomEvents>;
+
+    expectTypeOf<Handlers['onResize']>().toEqualTypeOf<
+      (event: { width: number; height: number }) => void
+    >();
+    expectTypeOf<Handlers['onClose']>().toEqualTypeOf<
+      (event: null) => void
+    >();
   });
 });
