@@ -1,7 +1,5 @@
 name: CI for labs
 
-run-name: ${{github.actor}} Эта я
-
 on: [ push ]
 
 jobs:
