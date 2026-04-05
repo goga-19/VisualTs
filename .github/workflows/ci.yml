@@ -1,0 +1,26 @@
+name: CI for labs
+
+run-name: ${{github.actor}} Эта я
+
+on: [ push ]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+    
+        steps:
+            - uses: actions/checkout@v5
+
+            - uses: actions/setup-node@v4
+              with:
+                node-version: '24.13.1'
+
+            - uses: pnpm/action-setup@v3
+
+            - run: pnpm i --frozen-lockfile
+            
+            - name: Check types
+              run: pnpm build
+
+            - name: Run tests
+              run: pnpm test
